@@ -1,0 +1,160 @@
+---
+title: "Homework 1"
+author: "James Davydov"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = T)
+```
+
+```{r load, include=FALSE}
+library(ggplot2) #Load all the packages needed 
+library(tidyverse)
+library(ggfortify)
+library(fastICA)
+
+library(factoextra)
+library(cluster)
+```
+
+```{r}
+#Read in the iris dataset
+data("iris")
+```
+
+# Question 0
+Subset the Iris dataset to only include `Sepal.Length`, `Sepal.Width`, `Petal.Length`, and `Petal.Width`.
+```{r}
+iris_Data <- iris[,1:4] #Taking all rows in first 4 columns
+dim(iris_Data) #Confirming that we still have 150 observations in 4 columns
+```
+
+# Question 1
+Write out the Kmeans algorithm by hand, and run two iterations of it.
+
+An attempt was made to manually walk through the Kmeans algorithm without success. Below is what was attempted and I would like to work with the TA to clarify where I went wrong. Below an attempt was made both using a loop to iterate through centroid assignment as well as manual distance calculations. 
+Manual Kmeans is done by deciding on the number of centroid clusters we would like to attempt to place (in this case, k=3), assigning each point in the dataset a value, then calculating the euclidean distance between the centroids and the data point. Through multiple iterations, points are assigned to their closest centroid and the euclidean distances are recalculated until there is no further convergence. 
+```{r}
+#set.seed(6) #Set.seed is used to allow replicability in each session.
+
+#k = 3 
+#clusters <- sample(1:k, size = nrow(iris_pca), replace = TRUE)
+
+#clust1 <- subset(iris_Data, clusters == 1)
+#clust2 <- subset(iris_Data, clusters == 2)
+#clust3 <- subset(iris_Data, clusters == 3)
+
+#clustmean1 <- colMeans(clust1)
+#clustmean2 <- colMeans(clust2)
+#clustmean3 <- colMeans(clust3)
+
+#clust_index <- c()
+#for (i in 1:nrow(iris_Data)) {
+#  n <- iris_Data[i,]
+#  distance <- c(dist(n, clustmean1, method = "euclidean"), dist(n, clustmean2, method = "euclidean"), dist(n, clustmean3, #method = "euclidean"))
+#  clust_index <- c(clust_index, which.min(distance))
+#}
+#print(clust_index)
+#dist1 = dist(clust1, clustmean1, method = "euclidean")
+#dist2 = dist(clust2, clustmean2, method = "euclidean")
+#dist3 = dist(clust3, clustmean3, method = "euclidean")
+
+#distdf <- c(dist1, dist2, dist3)
+
+#clusters2 <- apply(distdf, 1, which.min)
+
+#clust_index <- c()
+#for (i in 1:nrow(iris_Data)) {
+#  n <- iris_Data[clusters,]
+#  distance <- c(dist(n, clustmean1, method = "euclidean"), dist(n, clustmean2, method = "euclidean"), dist(n, clustmean3, #method = "euclidean"))
+#  clust_index <- c(clust_index, which.min(distance))
+#}
+#print(n)
+```
+
+# Question 2
+Run PCA on the Iris dataset. Plot a scatter plot of PC1 vs PC2 and include the percent variance those PCs describe.
+```{r}
+iris_pca <- data.matrix(iris_Data) #Saving iris data as matrix
+iris_scaled <- scale(iris_pca, center = TRUE, scale = TRUE) #Scaling iris data so that we may use equally proportional data.
+
+iris_cov <- cov(iris_scaled) #Finding covariance
+iris_eigen <- eigen(iris_cov) #Finding eigen values for eigen decomp
+iris_eigen_vec <- iris_eigen$vectors #Finding eigen vectors 
+
+PC <- as.data.frame(data.matrix(iris_scaled) %*% iris_eigen_vec) #Saving eigen data matrix as data frame to be plotted
+
+ggplot(PC, aes(PC[,1], PC[,2])) + geom_point() #PCA plot
+
+#The above was the manual step-by-step implementation of PCA. We may also use the built in prcomp function for similar results.
+```
+
+```{r}
+round(cumsum(iris_eigen$values)/sum(iris_eigen$values) * 100, digits = 2)
+#These values are the variance percentages of the first 4 principal components. Together, they should add up to 100%, which they do.  
+```
+The first PC accounts for a 92.46% variance, while the first two PCs together account for a 97.77% variance.
+
+# Question 3
+Run ICA on the Iris dataset. Plot the independent components as a heatmap.
+```{r}
+iris_ica <- fastICA(iris_Data, 3, alg.typ = "parallel", fun = "logcosh", alpha = 1,
+             method = "R", row.norm = FALSE, maxit = 200,
+             tol = 0.0001, verbose = FALSE) #ICA on iris dataset, using fastICA
+
+heatmap(iris_ica$S) #ICA heatmap
+```
+
+# Question 4
+Use Kmeans to cluster the Iris data. 
+
+  * Use the silhouette function in the cluster package to find the optimal number of clusters for kmeans for the iris dataset. Then cluster using kmeans clustering. Does the data cluster by species? 
+  * Using this clustering, color the PCA plot according to the clusters.
+```{r}
+sil_score <- function(k){ #Silhouette function
+  km <- kmeans(iris_scaled, centers = k, nstart=25)
+  ss <- silhouette(km$cluster, dist(iris_scaled))
+  mean(ss[, 3])
+}
+k <- 2:10
+avg_sil <- sapply(k, sil_score)
+plot(k, type='b', avg_sil, xlab='Number of clusters', ylab='Average Silhouette Scores', frame=FALSE)
+```
+
+The silhouette function shows that the optimal number of clusters for doing kmeans is 2, which does not correlate with the number of species we have, which we know is 3. 
+```{r}
+iris_km <- kmeans(iris_scaled, 2) #Utilizing kmeans function to run kmeans on iris data with 2 centers as suggested by silhouette plot.
+```
+
+```{r}
+ggplot(iris_km, aes(PC[,1], PC[,2], color = iris_km$cluster)) + geom_point() + labs(title = "K-Means Clustering of Iris Data", subtitle = "k = 2", color = "Cluster") #Plotting K-means
+```
+
+# Question 5
+Use hierarchical clustering to cluster the Iris data.
+
+  * Try two different linkage types, and two different distance metrics. 
+  * For one linkage type and one distance metric, try two different cut points. 
+  * Using this clustering, color the PCA plot according to the clusters. (6  plots in total)
+```{r}
+iris_dist_euc <- dist(iris_Data, method = "euclidean")
+iris_dist_manh <- dist(iris_Data, method = "manhattan") #Computing distance measures using euclidean and manhattan metrics.
+
+tree_euc_comp <- hclust(iris_dist_euc, method = "complete")
+tree_euc_avg <- hclust(iris_dist_euc, method = "average")
+tree_manh_comp <- hclust(iris_dist_manh, method = "complete")
+tree_manh_avg <- hclust(iris_dist_manh, method = "average") #For both euclidean and manhattan measures, we use a complete and average linkage type to plot a dendogram. 
+
+tree_ec_k2 <- cutree(tree_euc_comp, k = 2)
+tree_ec_k3 <- cutree(tree_euc_comp, k = 3) #For the euclidean complete linkage tree, we draw two new trees cutting each into 2 groups and 3 groups, respectively. 
+
+plot(tree_euc_comp, main = "Euclidean, Complete")
+plot(tree_euc_avg, main = "Euclidean, Average")
+plot(tree_manh_comp, main = "Manhattan, Complete")
+plot(tree_manh_avg, main = "Manhattan, Average")
+autoplot(prcomp(iris_pca), col = tree_ec_k2)
+autoplot(prcomp(iris_pca), col = tree_ec_k3) 
+```
+  
+  
